@@ -1,155 +1,235 @@
 # 第 13 章　分析、拓扑与计算机科学数学
 
-> 本章目标：一窥 mathlib 中"硬数学"（极限、连续、测度）的形态，以及新兴的计算机科学库 CSLib，理解形式化数学的前沿在哪里。
+> 本章目标：一窥 mathlib 中「硬数学」（极限、连续、测度）的形态，以及 CSLib 与形式化前沿。学完后你能读懂 `Tendsto`/`Continuous`，跑通几个分析小例子，并知道大项目（PFR、FLT）如何组织。
+
+## 本章你会做出什么
+
+1. 用滤子语言读「1/n → 0」「连续复合」；
+2. 对多项式函数证连续 / 算简单导数；
+3. 知道拓扑、概率、图论在库中的入口；
+4. 理解 CSLib / StatLib / EconLib / FLT 在版图中的位置。
+
+---
 
 ## 13.1 极限：滤子的胜利
 
-数学分析的核心是极限。mathlib 面对一个难题：数列极限、函数极限、趋于无穷的极限、左极限右极限……定义能不能统一？
+数列极限、函数极限、x→∞……能否统一？
 
-mathlib 的答案：**滤子**（filter）。这是一种"越来越小的集合族"的抽象，可以把所有极限统一成一句话：
+mathlib 的答案：**滤子（filter）**。
 
 ```lean
--- "f 在 x 趋于 (滤子) l 时的极限是 y" 统一写作：
+-- f 沿滤子 l 趋于 y 的邻域
 Tendsto f l (𝓝 y)
 ```
 
-`𝓝 y`（输入 `\Nb`）是"y 的邻域滤子"。于是：
+`𝓝 y`（`\Nh` / `\Nb` 等，以编辑器为准）是 y 的邻域滤子。
 
-- 数列 `u : ℕ → ℝ` 收敛到 `a`：`Tendsto u atTop (𝓝 a)`
-- 函数在 `x₀` 连续：`ContinuousAt f x₀`，即 `Tendsto f (𝓝 x₀) (𝓝 (f x₀))`
-- `x → +∞` 时的极限：`Tendsto f atTop (𝓝 a)`
+| 日常说法 | Lean |
+|----------|------|
+| 数列 u → a | `Tendsto u atTop (𝓝 a)` |
+| f 在 x₀ 连续 | `ContinuousAt f x₀`，即 `Tendsto f (𝓝 x₀) (𝓝 (f x₀))` |
+| x→+∞ 时 f→a | `Tendsto f atTop (𝓝 a)` |
 
-同一套 `Tendsto` 定理（极限的加法、乘法、复合……）**通吃所有极限**。这是 mathlib 设计哲学的代表作：一个抽象，处处复用。
-
-看个具体例子：
+同一套极限引理（加、乘、复合）**通吃**。
 
 ```lean
 import Mathlib
 
 open Filter Topology
 
--- 数列 1/n → 0
-example : Tendsto (fun n : ℕ => (1 : ℝ) / n) atTop (𝓝 0) := by
-  simpa using tendsto_one_div_atTop_nhds_zero_nat
+example : Tendsto (fun n : ℕ => (1 : ℝ) / n) atTop (𝓝 0) :=
+  tendsto_one_div_atTop_nhds_zero_nat
 
--- 连续函数复合仍连续
 example {f g : ℝ → ℝ} (hf : Continuous f) (hg : Continuous g) :
     Continuous (g ∘ f) := hg.comp hf
 ```
 
-## 13.2 微积分：导数与积分
+### 初学者怎么用
+
+不必第一天吃透滤子公理。实用路径：
+
+1. 会写 `Tendsto` / `Continuous` 目标；
+2. `exact?` / 文档搜 `tendsto_` 前缀；
+3. 需要时再读 MIL 拓扑章。
+
+---
+
+## 13.2 微积分
 
 ```lean
--- 导数
 example : deriv (fun x : ℝ => x ^ 2) 3 = 6 := by
-  simp [deriv_pow]
+  simp [deriv_pow'']  -- 引理名随版本可能微调
+  norm_num
 
--- 基本定理：∫x in a..b, x dx = (b² - a²)/2 之类
-example : ∫ x in (0:ℝ)..1, x = 1 / 2 := by
-  norm_num [integral_id]   -- 具体计算有 intervalIntegral 工具链
+-- 区间积分示例（工具链较重，有时需更多 import）
+-- example : ∫ x in (0:ℝ)..1, x = 1/2 := by ...
 ```
 
-mathlib 的微积分覆盖：一元/多元导数（Fréchet 导数）、黎曼/勒贝格积分、微积分基本定理、泰勒展开……足够支撑严肃的数学研究（Liquid Tensor Experiment 就大量动用了这部分）。
+覆盖面（概念级）：一元/多元导数、积分、微积分基本定理、泰勒……Liquid Tensor 等项目大量依赖分析库。
 
-## 13.3 拓扑：开集的世界
+**练习姿势**：具体点值用 `norm_num`；一般恒等式找 `deriv_*` 引理。
+
+---
+
+## 13.3 拓扑
 
 ```lean
 variable {X : Type*} [TopologicalSpace X]
 
-example (U V : Set X) (hU : IsOpen U) (hV : IsOpen V) : IsOpen (U ∩ V) :=
-  hU.inter hV
-
--- 紧集：任意开覆盖有有限子覆盖
-example (s : Set X) (hs : IsCompact s) : True := trivial  -- IsCompact 是核心概念
+example (U V : Set X) (hU : IsOpen U) (hV : IsOpen V) :
+    IsOpen (U ∩ V) := hU.inter hV
 ```
 
-拓扑部分的长项：度量空间、一致空间、紧性（Tychonoff 定理）、连通性、完备性——这些都是现代分析的地基，mathlib 全部形式化了。
+长项：度量空间、紧性、连通、完备——现代分析地基。对应用户：多数时候通过 `Continuous` 间接享受拓扑。
 
-## 13.4 概率论与测度论
+---
 
-概率论在 mathlib 里是测度论的应用（这本身就是现代概率论的正统做法）：
+## 13.4 概率与测度
+
+概率在 mathlib 是测度论的应用：
 
 ```lean
 open MeasureTheory ProbabilityTheory
 
--- 随机变量、期望、方差、独立性、大数定律、中心极限定理……
-#check probability_theory
+#check MeasureSpace
+-- 期望、独立性、大数律等在 Probability 命名空间
 ```
 
-里程碑：2023–2024 年，陶哲轩与社区合作形式化了 **多项式 Freiman–Ruzsa 猜想**的证明（加性组合的重要成果），大量使用概率方法——从论文到形式化只用了几周，证明了 Lean 已能跟上前沿研究的速度。
+里程碑：多项式 Freiman–Ruzsa（PFR）形式化大量用概率方法——从论文到形式化速度以周计，展示前沿可及性。
+
+---
 
 ## 13.5 组合与图论
 
 ```lean
--- 图：SimpleGraph V
 variable {V : Type*} (G : SimpleGraph V)
 
-#check G.Adj        -- 邻接关系
-#check SimpleGraph.Walk   -- 路径（归纳定义）
+#check G.Adj
+#check SimpleGraph.Walk
 ```
 
-拉姆齐定理、四色定理的图论表述、匹配理论……组合数学是形式化的活跃领域。
+拉姆齐、匹配、图参数……组合是活跃形式化区。
+
+---
 
 ## 13.6 CSLib：计算机科学的形式化
 
-数学之外，社区近年发起了 **CSLib**（Computer Science Library），目标是为计算机科学提供 mathlib 级别的形式化基础：
+**CSLib** 目标：给 CS 提供 mathlib 级基础——
 
-- 算法与数据结构（排序、搜索树、堆）；
-- 复杂度理论（时间/空间复杂度类）；
-- 自动机、形式语言、可计算性；
-- 类型系统与程序语义。
+- 算法与数据结构；
+- 复杂度；
+- 自动机与形式语言；
+- 类型系统与语义。
 
-mathlib 内部其实已有不少 CS 内容（`Mathlib.Computability.TuringMachine` 里甚至有图灵机的形式化和通用图灵机构造！）。CSLib 的独立发展意味着：**用 Lean 验证"真正的程序"会越来越顺手**——这也正是本书第 14–16 章的数学后盾。
+mathlib 内已有 `Computability`（含图灵机等）。CSLib 独立发展意味着：**验证「真程序」的数学后盾更厚**——接第 14–16 章。
 
-## 13.7 统计与经济：形式化的新边疆
+---
 
-Lean 的应用边界还在扩张，2025–2026 年的新动向：
+## 13.7 新边疆：Stat / Econ / Torch
 
-- **StatLib**：数理统计库（估计量、检验、渐近理论）；
-- **EconLib**（Axiom 公司发起）：经济学理论形式化（博弈论、一般均衡）；
-- **TorchLean**：连接 PyTorch 与 Lean，探索对神经网络计算的验证。
+| 库 | 方向 |
+|----|------|
+| StatLib | 数理统计 |
+| EconLib | 经济理论（博弈、均衡） |
+| TorchLean | 神经网络计算与 Lean 桥接 |
 
-形式化方法正在从"纯数学 + 软件"溢出到一切**需要严格推理的学科**。
+形式化正从纯数学 + 软件，溢到一切要严格推理的学科。
+
+---
 
 ## 13.8 费马大定理项目：仰望星空
-
-本章以整个社区的"珠穆朗玛"收尾：**Fermat's Last Theorem 形式化项目**（Kevin Buzzard 领导，多方资助）。
-
-费马大定理说：方程 `xⁿ + yⁿ = zⁿ`（n ≥ 3）没有正整数解。Wiles 1995 年的证明动用了 20 世纪数学最深的工具（椭圆曲线、模形式、Galois 表示）。形式化它的意义：
-
-1. 检验这条人类推理长链的每一个环节；
-2. 倒逼 mathlib 形式化大量现代数论（这是最实际的遗产——就像登月计划留下了无数技术）；
-3. 探索人机协作做前沿数学的新范式（项目部分工作已由 AI 辅助推进，陶哲轩等人参与讨论）。
-
-其 Lean 中的最终目标陈述朴素得可爱：
 
 ```lean
 theorem FermatLastTheorem : ∀ n ≥ 3, ¬ ∃ x y z : ℕ,
     x ≠ 0 ∧ y ≠ 0 ∧ x ^ n + y ^ n = z ^ n
 ```
 
-一行代码，承载了 350 年的数学史。
+一行陈述，350 年历史。意义：
 
-## 13.9 本章小结
+1. 检验超长人类推理链；
+2. **倒逼**现代数论进入 mathlib（最大工程遗产）；
+3. 探索 AI 辅助协作（blueprint 拆引理）。
 
-- mathlib 用**滤子**统一极限，`Tendsto` 一句通吃所有收敛；
-- 微积分、拓扑、测度、概率、组合……现代数学主干均已形式化；
-- **CSLib** 把同样的方法带给计算机科学，是软件验证的数学后盾；
-- 统计（StatLib）、经济（EconLib）、AI（TorchLean）等新边疆正在开辟；
-- 费马大定理项目展示了社区"以大问题倒逼大建设"的雄心。
+浏览 ImperialCollegeLondon/FLT：看 **blueprint 依赖图**——大规模协作的组织方式值得任何验证项目抄作业。
+
+---
+
+## 13.9 迷你项目：三条分析「入口定理」
+
+在 mathlib 项目中尝试：
+
+```lean
+import Mathlib
+
+open Filter Topology
+
+-- 1) 连续的多项式
+example : Continuous (fun x : ℝ => x^2 + 3*x + 1) := by
+  continuity  -- 或 fun_prop；失败则 continuous_add/continuous_pow 拼
+
+-- 2) 数列 (n)/(n+1) → 1
+example : Tendsto (fun n : ℕ => (n : ℝ) / (n + 1)) atTop (𝓝 1) := by
+  -- 思路：写成 1 - 1/(n+1)，再 tendsto 运算
+  sorry  -- 练习：搜 tendsto_const、tendsto_one_div...
+
+-- 3) 具体导数
+example : deriv (fun x : ℝ => x * x) 5 = 10 := by
+  simp [mul_comm, deriv_mul, deriv_id''] <;> norm_num
+```
+
+（`sorry` 处按你环境 `exact?` 填满——重点是走通工作流。）
+
+---
+
+## 13.10 踩坑对照
+
+| 症状 | 处理 |
+|------|------|
+| `Tendsto` 看不懂 | 先当 API 用，后读滤子 |
+| `continuity` 失败 | 拆成连续函数组合引理 |
+| 积分例子编不过 | import 与 API 变更多，查文档 |
+| 宇宙/`ℝ` 问题 | `import Mathlib.Data.Real.Basic` |
+| 大项目克隆太大 | 只读 blueprint / 文档，不必全编译 |
+
+---
+
+## 13.11 本章小结
+
+- **滤子**统一极限；`Tendsto` 一句通吃；
+- 微积分、拓扑、测度、概率、图论主干已形式化；
+- **CSLib** 与新兴库扩展边界；
+- FLT/PFR 展示大问题驱动大建设。
+
+---
 
 ## 练习
 
-1. 用 mathlib 证明数列 `(n : ℕ) ↦ (n : ℝ) / (n + 1)` 收敛到 1（提示：改写为 `1 - 1/(n+1)`，或搜索相关 tendsto 引理）；
-2. 证明 `Continuous (fun x : ℝ => x^2 + 3*x + 1)`（提示：`continuous_pow`、`continuous_add` 等引理组合，或试 `fun_prop` 策略）；
-3. 计算：`deriv (fun x : ℝ => x * x) 5` 并用 `simp`/`norm_num` 验证；
-4. 浏览 FLT 项目的 GitHub 仓库（ImperialCollegeLondon/FLT），看看"蓝点依赖图"（项目把证明拆成带依赖关系的小引理），感受大规模形式化协作的组织方式。
+### ⭐ 基础
+
+1. 证 `Continuous (fun x : ℝ => x^2)`。
+2. `#check` 并阅读 `tendsto_add` 的类型。
+
+### ⭐⭐ 进阶
+
+3. 完成 `(n : ℝ)/(n+1) → 1`。
+4. 计算 `deriv (fun x : ℝ => x^3) 2` 并 `norm_num`。
+5. 在 SimpleGraph 上找一条「若边对称」相关引理名。
+
+### ⭐⭐⭐ 硬核
+
+6. 浏览 FLT blueprint，选一个叶子引理读陈述。
+7. 读陶哲轩关于 PFR 形式化的博客摘要，列 3 条「人机协作」经验。
+
+---
 
 ## 延伸阅读
 
-- 《Mathematics in Lean》第 9–11 章（拓扑、微分、积分与测度）；
-- 论文：*The Liquid Tensor Experiment*（Scholze 的博客综述）；
-- PFR 项目总结：陶哲轩的博客文章。
+| 资源 | 内容 |
+|------|------|
+| MIL 拓扑/微分/积分章 | 主线教程 |
+| Liquid Tensor 综述 | 硬分析里程碑 |
+| PFR / FLT 仓库 | 大型项目组织 |
+| CSLib README | CS 形式化地图 |
 
 ---
 

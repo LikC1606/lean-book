@@ -81,8 +81,10 @@ Lean 4 于 2021 年正式发布，由微软研究院的 Leonardo de Moura（也�
 ## 配套资源
 
 - **在线运行**：不想装环境？打开 [Lean 4 Web Playground](https://live.lean-lang.org/) 就能在浏览器里运行书中绝大部分示例。当然，我们强烈建议按照第 2 章安装本地环境，体验会好得多。
-- **本书仓库**：所有章节和示例代码托管在 GitHub，欢迎提 issue 报错或发 PR 改进。
-- **社区**：Lean 社区主要在 [Zulip](https://leanprover.zulipchat.com/)（英文）和若干中文讨论区，新手问题几乎都会得到解答。
+- **本书仓库**：所有章节托管在 GitHub，欢迎提 issue 报错或发 PR 改进。
+- **可构建示例**：仓库 `examples/` 是 Lake 项目（无 mathlib 依赖），收录多章对照代码，安装后执行 `cd examples && lake build` 即可验收环境。
+- **附录 D / E**：官方文档难句白话对照、自然数游戏关卡与本书章节映射——卡在「官网太难 / 游戏通完了下一步」时查。
+- **社区**：Lean 社区主要在 [Zulip](https://leanprover.zulipchat.com/)（英文，含 `#Chinese`）和若干中文讨论区，新手问题几乎都会得到解答。
 
 ## 关于版本
 

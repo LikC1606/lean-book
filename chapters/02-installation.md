@@ -1,8 +1,15 @@
 # 第 2 章　安装与环境配置
 
-> 本章目标：在你的电脑上装好 Lean 4 开发环境，并跑通第一个程序。我们会把"装好"这件事一次做到位，后面 20 章都不用再为环境分心。
+> 本章目标：在你的电脑上装好 Lean 4 开发环境，并跑通第一个程序。我们会把「装好」这件事一次做到位，后面 20 章都不用再为环境分心。
 
-安装 Lean 4 其实只需要记住一个名字：**elan**。它是 Lean 的工具链管理器（类似 Rust 的 rustup、Python 的 pyenv），负责安装和切换 Lean 版本。配合编辑器插件（VS Code 为主）和构建工具 **Lake**，三者构成 Lean 的"开发铁三角"：
+## 本章你会做出什么
+
+1. 安装 **elan** 并确认 `lean --version`；
+2. 装好 VS Code Lean 4 插件，认识 Infoview；
+3. `lake new hello` 并 `lake exe hello` 跑通；
+4. （可选）克隆本书 `examples/` 目录并 `lake build`。
+
+安装 Lean 4 其实只需要记住一个名字：**elan**。它是 Lean 的工具链管理器（类似 Rust 的 rustup、Python 的 pyenv），负责安装和切换 Lean 版本。配合编辑器插件（VS Code 为主）和构建工具 **Lake**，三者构成 Lean 的「开发铁三角」：
 
 ```
 elan   —— 管 Lean 版本（装哪个版本、切哪个版本）
@@ -327,28 +334,70 @@ Lake 目前按项目隔离 `lake-packages/`。可以用符号链接或自定义�
 **Q8：装完之后 Lean 报一堆 mathlib 相关错误，但我不想用 mathlib？**
 确认你的 `lakefile.toml` 里没有 `[require] mathlib` 段；单文件模式默认不引入 mathlib，除非你 `import Mathlib`。
 
-## 2.10 本章小结
+## 2.10 本书配套 `examples/` 项目
+
+仓库根目录下的 `examples/` 是一个**不依赖 mathlib** 的 Lake 项目，收录第 3、4、8、14、15、22 等章的可构建对照代码：
+
+```bash
+cd examples
+lake build          # 应全部通过
+# 可选：lake env lean --run 某文件（若配置了 exe）
+```
+
+作用：
+
+- 避免「书上抄了但本地版本语法差一截」；
+- 给你一个改一改就能破的沙盒；
+- CI 可挂 `lake build` 防止示例腐坏。
+
+单文件学习仍完全 OK；需要完整模块路径时再进 `examples/`。
+
+## 2.11 装好验收清单（Checklist）
+
+全部打勾再进入第 3 章：
+
+- [ ] `elan --version` 与 `lean --version` 有输出
+- [ ] VS Code 打开 `.lean` 文件后右侧 Infoview 出现
+- [ ] 能用 `\to` 输入 `→`，`\and` 输入 `∧`
+- [ ] `lake new hello && cd hello && lake build && lake exe hello` 成功
+- [ ] （推荐）`cd examples && lake build` 成功
+- [ ] 知道单文件不能 `import Mathlib`，mathlib 要等第 11 章
+
+## 2.12 本章小结
 
 - **elan** 管版本，**Lake** 管构建，**VS Code 插件**管交互——三者各司其职；
 - 日常试验用单文件 + `#eval` 最快；做正经项目用 `lake new`；
 - 用 mathlib 的项目记得 `lake exe cache get` 拿预编译缓存，否则本地编译几小时起步；
 - 模块名严格对应目录路径；多文件项目靠 `import` 串起来；
+- 本书 `examples/` 提供可构建对照；验收清单全勾再往下读；
 - 遇到问题先看 Infoview 和 Output 面板，再去 Zulip 提问。
 
 ## 练习
 
-1. ⭐ 装好环境后，创建一个单文件，写函数 `square (n : Nat) : Nat := n * n`，用 `#eval square 12` 验证输出 `144`；
-2. ⭐ 用 `lake new` 建一个项目，修改 `Main.lean` 让它打印你的名字，构建运行；
-3. ⭐ 在 VS Code 里练习 Unicode 输入：打出 `∀ x : Nat, x + 0 = x` 这行代码（提示：`\forall`、`\:`、`\to`）；
-4. ⭐⭐ 打开你创建项目的 `lakefile.toml`，尝试再声明一个 `[[lean_lib]]`，名字自定，在对应目录建一个 `.lean` 文件写个函数，从 `Main.lean` 里 `import` 并 `#eval` 调用它；
-5. ⭐⭐ （可选）配置一个带 mathlib 依赖的项目并成功 `lake exe cache get`，记录耗时，为第 11 章做准备。
+### ⭐ 基础
+
+1. 单文件写 `square (n : Nat) : Nat := n * n`，`#eval square 12` 得 `144`。
+2. `lake new` 项目，改 `Main.lean` 打印你的名字并运行。
+3. Unicode：输入 `∀ x : Nat, x + 0 = x`（`\forall` 等）。
+
+### ⭐⭐ 进阶
+
+4. 在 `lakefile.toml` 再声明一个 lib，从 Main import 调用。
+5. 构建本书 `examples/` 并打开 `LeanBookExamples/Ch03.lean` 改一个 `#eval`。
+
+### ⭐⭐⭐ 硬核
+
+6. 配置 mathlib 模板项目 + `cache get`，记录耗时（第 11 章预习）。
+7. 给自己的 hello 项目加 GitHub Action + `lean-action`（可选）。
 
 ## 延伸阅读
 
-- Lean 官方安装指南：lean-lang.org → Install；
-- VS Code 插件手册：lean-lang.org → "Lean 4 VS Code Extension Manual"；
-- [`lean-action`](https://github.com/leanprover/lean-action) 文档（CI 用）；
-- [elan 仓库](https://github.com/leanprover/elan)（工具链管理细节）。
+| 资源 | 内容 |
+|------|------|
+| lean-lang.org → Install | 官方安装 |
+| VS Code Extension Manual | 插件细节 |
+| [lean-action](https://github.com/leanprover/lean-action) | CI |
+| [elan](https://github.com/leanprover/elan) | 工具链 |
 
 ---
 

@@ -1,44 +1,53 @@
 # 第 19 章　打造领域专用语言（DSL）
 
-> 本章目标：综合运用语法、宏与语义设计，在 Lean 内嵌一门小型领域语言——并理解为什么"内嵌 DSL"是 Lean 元编程的皇冠明珠。
+> 本章目标：综合语法、宏与语义，在 Lean 内嵌小型领域语言，并理解 EDSL 为何是元编程皇冠。学完后你能设计 AST+eval，挂上 syntax，并为 DSL 程序证一条性质。
 
-## 19.1 什么是内嵌 DSL，为什么它重要？
+## 本章你会做出什么
 
-DSL（Domain-Specific Language，领域专用语言）是为特定领域定制的小语言：SQL 之于数据库、正则之于文本匹配、Cron 表达式之于定时任务。
+1. 设计电路 DSL 的 `GateExpr` / `Circuit` AST；
+2. 写可执行 `eval`；
+3. 用 `declare_syntax_cat` 挂语法；
+4. 证明半加器正确性；
+5. 套用「语法 / 语义 / 定理」三层蓝图到自己的领域。
 
-**内嵌 DSL**（embedded DSL，EDSL）不是独立语言，而是**寄生在宿主语言里**的方言。Lean 凭借开放的语法系统，可能是当今做 EDSL 最好的宿主：
+---
 
-- Veil（第 15 章）：分布式协议 DSL，内嵌 Lean；
-- Lean 自身的 `do` 记法、`calc`、`conv`：都是 EDSL；
-- mathlib 的 `∑`/`∫` 记号族：数学 notation 的 EDSL。
+## 19.1 什么是内嵌 DSL？
 
-本章我们亲手造一门：**硬件电路描述语言**——顺带展示 Lean 在硬件验证领域的玩法。
+DSL：为特定领域定制的小语言（SQL、正则、Cron）。
 
-## 19.2 设计一门迷你电路语言
+**EDSL**：寄生在宿主语言中的方言。Lean 开放语法 → 当今最好的 EDSL 宿主之一：
 
-目标：让用户这样描述电路——
+- Veil 协议 DSL；
+- `do` / `calc` / `conv`；
+- mathlib `∑` / `∫`。
+
+本章造一门**迷你硬件电路语言**。
+
+---
+
+## 19.2 三步：AST → 求值 → 语法
+
+### 理想中的表面语法
 
 ```lean
-circuit half_adder (a b : Bool) where
-  s := xor a b
-  c := and a b
-  output (s, c)
+-- 目标体验（完整 elab 后）：
+-- circuit half_adder (a b) where
+--   s := xor a b
+--   c := and a b
+--   output (s, c)
 ```
 
-并自动得到：① 可执行的电路求值器；② 可证明性质的数学模型。
-
-分三步走：**语法 → 语义（AST）→ 翻译（宏/elab）**。
-
-### 第 1 步：AST——电路的"语义骨架"
+### 第 1 步：AST（先语义、后糖）
 
 ```lean
 inductive GateExpr where
-  | var (name : String) : GateExpr
+  | var (name : String)
   | and : GateExpr → GateExpr → GateExpr
   | or  : GateExpr → GateExpr → GateExpr
   | xor : GateExpr → GateExpr → GateExpr
   | not : GateExpr → GateExpr
-deriving Repr
+deriving Repr, BEq
 
 structure Circuit where
   inputs  : List String
@@ -47,28 +56,46 @@ structure Circuit where
 deriving Repr
 ```
 
-AST（抽象语法树）是 DSL 的心脏：**语法可以花哨，语义必须干净。**
+**语法可花哨，语义必须干净。**
 
-### 第 2 步：求值器——给 AST 赋予意义
+### 第 2 步：求值器
 
 ```lean
 def GateExpr.eval (env : String → Bool) : GateExpr → Bool
-  | .var n    => env n
-  | .and a b  => a.eval env && b.eval env
-  | .or a b   => a.eval env || b.eval env
-  | .xor a b  => a.eval env != b.eval env
-  | .not a    => !(a.eval env)
+  | .var n   => env n
+  | .and a b => a.eval env && b.eval env
+  | .or a b  => a.eval env || b.eval env
+  | .xor a b => xor a.eval env (b.eval env)
+  | .not a   => ! a.eval env
+where
+  xor : Bool → Bool → Bool
+    | true,  false => true
+    | false, true  => true
+    | _,     _     => false
 
 def Circuit.eval (c : Circuit) (env : String → Bool) : List Bool :=
-  -- 简化：按赋值顺序逐步扩展环境
   let env' := c.assigns.foldl (init := env) fun e (n, g) =>
     fun x => if x = n then g.eval e else e x
   c.outputs.map env'
+
+def halfAdderAST : Circuit where
+  inputs := ["a", "b"]
+  assigns := [
+    ("s", .xor (.var "a") (.var "b")),
+    ("c", .and (.var "a") (.var "b"))
+  ]
+  outputs := ["s", "c"]
+
+#eval halfAdderAST.eval fun
+  | "a" => true
+  | "b" => true
+  | _ => false
+-- [false, true]  即 sum=0 carry=1，1+1=10₂
 ```
 
-现在电路已经是**可执行 + 可证明**的一等数学对象了。
+现在电路是**可执行 + 可证明**的对象。
 
-### 第 3 步：语法糖——宏把漂亮的记号翻译成 AST
+### 第 3 步：语法类别（挂糖）
 
 ```lean
 declare_syntax_cat gate_expr
@@ -79,26 +106,37 @@ syntax "xor" gate_expr gate_expr : gate_expr
 syntax "not" gate_expr : gate_expr
 syntax "(" gate_expr ")" : gate_expr
 
-syntax "circuit" ident "(" ident* ")" "where" (ident ":=" gate_expr)* "output" "(" ident,* ")" : command
+-- macro_rules 把 gate_expr 译成 GateExpr 构造
+-- command 级 `circuit ...` 需 elab 递归处理列表（约数十行）
+-- 练习中补全；思想：匹配语法 → 拼 AST 项
 ```
 
-然后用 `macro_rules` 把这套语法翻译成"构造 `Circuit` 值"的 Lean 代码（为控制篇幅给出核心骨架）：
-
 ```lean
+open Lean
+
 macro_rules
-  | `(gate_expr| $i:ident) => `(GateExpr.var $(Lean.quote i.getId.toString))
-  | `(gate_expr| and $a $b) => `(GateExpr.and $(← `(gate_expr| $a)) $(← `(gate_expr| $b)))
-  -- ... 其余构造类似
+  | `(gate_expr| $i:ident) =>
+      `(GateExpr.var $(quote i.getId.toString))
+  | `(gate_expr| and $a $b) =>
+      `(GateExpr.and $(← `(gate_expr| $a)) $(← `(gate_expr| $b)))
+  | `(gate_expr| or $a $b) =>
+      `(GateExpr.or $(← `(gate_expr| $a)) $(← `(gate_expr| $b)))
+  | `(gate_expr| xor $a $b) =>
+      `(GateExpr.xor $(← `(gate_expr| $a)) $(← `(gate_expr| $b)))
+  | `(gate_expr| not $a) =>
+      `(GateExpr.not $(← `(gate_expr| $a)))
+  | `(gate_expr| ($a)) => `(gate_expr| $a)
 ```
 
-（完整的 command 级展开需要 `elab` 递归处理赋值列表，约 30 行——思路不变：模式匹配语法 → 拼出 AST 构造表达式。完成后，`circuit half_adder ...` 就会真的定义出一个 `Circuit` 常量。）
+---
 
-## 19.3 DSL 的杀手锏：验证性质
-
-现在进入 Lean 独有的环节——**为你的 DSL 证明定理**：
+## 19.3 杀手锏：为 DSL 证定理
 
 ```lean
-/-- 半加器的正确性：输出 (s, c) 满足 s + 2c = a + b -/
+def Bool.toNat : Bool → Nat
+  | false => 0
+  | true  => 1
+
 theorem half_adder_correct (a b : Bool) :
     let s := (a != b)
     let c := (a && b)
@@ -106,60 +144,116 @@ theorem half_adder_correct (a b : Bool) :
   cases a <;> cases b <;> decide
 ```
 
-真实项目中这意味着：**硬件设计直接在设计语言里被验证**——不用导出到外部工具，设计和证明共享同一套语义。这也是 Lean 硬件验证生态（如正在发展的 Lakeroad 等项目）的工作方式。
+硬件：**设计与证明共享同一语义**——这是 Lean EDSL 相对「外部工具链」的独特价值（Lakeroad 等生态同思路）。
 
-## 19.4 EDSL 设计的三层心法
+也可对 AST 版陈述：
 
-回顾本章架构，内嵌 DSL 的通用蓝图：
+```lean
+theorem halfAdder_eval_sum (a b : Bool) :
+    let out := halfAdderAST.eval fun
+      | "a" => a | "b" => b | _ => false
+    out.length = 2 := by native_decide
+```
+
+---
+
+## 19.4 三层蓝图（可复用）
 
 ```
-┌─ 语法层：declare_syntax_cat + syntax + macro ─┐
-│   漂亮、贴近领域记号（给领域专家用）              │
-├─ 语义层：inductive AST + eval/语义函数 ─────────┤
-│   干净、可执行、可推理（给证明用）                │
-├─ 定理层：关于语义的性质 ───────────────────────┤
-│   DSL 程序的正确性定理（Lean 独有价值）           │
-└───────────────────────────────────────────────┘
+┌─ 语法层：syntax + macro/elab ─────────┐
+│  领域专家友好的表面语言                 │
+├─ 语义层：AST + 纯 eval ───────────────┤
+│  可执行、可推理                         │
+├─ 定理层：关于 eval 的性质 ─────────────┤
+│  DSL 程序的正确性（Lean 独有）          │
+└───────────────────────────────────────┘
 ```
 
 设计经验：
 
-1. **AST 先行**：先设计干净的语义模型，语法糖后面再贴；
-2. **语义函数要纯**：`eval : AST → Env → Result` 纯函数化，证明才好写；
-3. **语法适可而止**：覆盖领域 80% 常用写法即可，边角让用户回退到原生 Lean；
-4. **示例驱动**：先手写 5 个"理想中的 DSL 程序长什么样"，再回头实现。
+1. **AST 先行**，糖后贴；
+2. **eval 保持纯**；
+3. **语法覆盖 80%**，边角回退原生 Lean；
+4. **示例驱动**：先写 5 个理想程序再实现。
 
-## 19.5 更多 DSL 灵感
+---
 
-同样的蓝图可以用于：
+## 19.5 更多灵感
 
-- **关系代数/SQL**：`query { from users, where age > 18, select name }` → 可证明"查询结果不含未成年"（配合表模型）；
-- **概率程序**：`do x ← uniform; y ← bernoulli x; return x + y` → 在 mathlib 测度论上推理分布性质；
-- **机器人/控制**：状态机 DSL → 证明安全性不变量（"机械臂永不出围栏"）；
-- **金融业务规则**：会计恒等式 DSL → "复式记账永远平衡"的定理；
-- **CI/配置语言**：声明式配置 → 证明"配置满足安全基线"。
+| 领域 | EDSL 想法 | 可证性质 |
+|------|-----------|----------|
+| SQL | `query { from … where … }` | 结果不含未成年 |
+| 概率程序 | monadic 采样 | 分布等式 |
+| 控制/机器人 | 状态机 | 永不越界 |
+| 金融 | 复式记账 DSL | 借贷永远平衡 |
+| 配置/CI | 声明式配置 | 满足安全基线 |
 
-凡是有**精确规则 + 高正确性要求**的领域，"Lean EDSL + 定理"的模式都可能颠覆现有的"写配置 + 祈祷"工作流。
+---
 
-## 19.6 本章小结
+## 19.6 正则 DSL 迷你骨架（练习用）
 
-- EDSL = 宿主语言内的领域方言；Lean 的开放语法系统使其成为 EDSL 的理想宿主；
-- 蓝图：语法层（宏）→ 语义层（AST + eval）→ 定理层（性质证明）；
-- Lean EDSL 的独特价值：**DSL 程序本身就能被形式化验证**；
-- 从硬件电路到金融规则，模式放之四海皆准。
+```lean
+inductive Regex where
+  | empty
+  | char (c : Char)
+  | alt : Regex → Regex → Regex
+  | concat : Regex → Regex → Regex
+  | star : Regex → Regex
+deriving Repr
+
+-- matches : Regex → List Char → Bool  （练习实现）
+```
+
+---
+
+## 19.7 踩坑对照
+
+| 症状 | 处理 |
+|------|------|
+| 先写宏后改语义 | 永远先定 AST/eval |
+| eval 里藏 IO | 拆到薄壳 |
+| 语法贪心冲突 | 调优先级 / 关键词 |
+| 证明对着语法糖 | 对着 AST/eval 证 |
+| DSL 过大 | 砍功能；80 分可交付 |
+
+---
+
+## 19.8 本章小结
+
+- EDSL = 宿主内领域方言；Lean 极擅长；
+- 蓝图：语法 → 语义 → 定理；
+- 独特价值：DSL 程序可被形式化验证；
+- 模式可迁移到任意高正确性规则域。
+
+---
 
 ## 练习
 
-1. 补全 19.2 电路 DSL 的 `or`/`xor`/`not`/括号 宏规则；
-2. 给电路求值器证明一个引理："未赋值变量按环境原值传递"（`env'` 对不在 assigns 中的变量与 env 一致）；
-3. 设计一门**正则表达式 DSL** 的 AST：`star`、`alt`、`concat`、`char`、`empty`，并实现 `matches : Regex → List Char → Bool`（用递归 + 列表分裂；证明"empty 只匹配空串"）；
-4. （开放）选一个你熟悉的领域，写出它的 EDSL"理想语法"草稿（5 个示例程序），并标注每个程序你想验证的性质。
+### ⭐ 基础
+
+1. 补全 `or`/`xor`/`not` 的 `macro_rules`（若上面已有则写 `nand`）。
+2. `#eval` 半加器四种输入。
+
+### ⭐⭐ 进阶
+
+3. 证：对不在 `assigns` 名中的变量，折叠后 env 与原 env 一致（需仔细陈述）。
+4. 实现 `Regex` 的 `matches` 子集（至少 `empty`/`char`/`alt`）。
+
+### ⭐⭐⭐ 硬核
+
+5. 用 `elab` 实现简化版 `circuit` 命令，生成 `def` 绑定 `Circuit`。
+6. 为自己领域写 5 个理想 DSL 示例 + 每条想证的性质（开放文档题）。
+
+---
 
 ## 延伸阅读
 
-- 《Metaprogramming in Lean 4》（语法与宏章节）；
-- Veil 的 DSL 实现（GitHub: veil-org/veil……搜索 "Veil Lean verification"）；
-- 论文：*Certified Programming with Dependent Types*（EDSL 设计思想的经典，Coq 背景但思想通用）。
+| 资源 | 内容 |
+|------|------|
+| Metaprogramming in Lean 4 | 语法与宏 |
+| Veil 源码 | 工业 EDSL |
+| CPDT（Coq）EDSL 思想 | 经典 |
+| 第 15 章 Veil、第 17–18 章 | 前后文 |
 
 ---
 

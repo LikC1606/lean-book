@@ -1,148 +1,179 @@
 # 第 16 章　密码学与区块链：验证零知识证明
 
-> 本章目标：了解 Lean 在密码学（尤其是零知识证明/SNARK）验证中的角色，认识 ArkLib 项目，并动手形式化一个微型密码协议。
+> 本章目标：了解 Lean 在密码学（尤其 SNARK）验证中的角色，认识 ArkLib，并动手形式化微型承诺协议。学完后你能陈述正确性/绑定性/隐藏性，并完成玩具协议的部分证明。
 
-## 16.1 为什么密码学特别需要形式化？
+## 本章你会做出什么
 
-密码学的正确性论证有独特的"毒性"：
+1. 说明为何密码学特别需要机器检查证明；
+2. 知道 ArkLib 在做什么；
+3. 实现玩具 `commit`/`verify` 并证正确性与绑定性；
+4. 理解隐藏性如何连到概率（`PMF`）叙事。
 
-1. **概率推理**：安全性定义本身带概率（"攻击者成功的概率可忽略"）——人类审稿极易漏掉边界情形；
-2. **微妙的安全性**：一个协议可以功能完全正确、测试全过，同时**安全性证明有个洞**；
-3. **代价极端**：零知识证明系统保护的是真金白银（区块链资产），一个 soundness bug 就是印钞机后门。
+---
 
-2010 年代，多个已发表（甚至已标准化）的密码协议被发现证明有误。形式化验证由此成为密码学界的新共识：**论文证明 + 机器检查证明，双保险。**
+## 16.1 为什么密码学特别吃形式化？
 
-## 16.2 ArkLib：为 SNARK 建造形式化地基
+1. **概率安全**：定义带「可忽略概率」——人审易漏边界；
+2. **功能对 ≠ 安全对**：测试全过仍可能 soundness 有洞；
+3. **代价极端**：zk/链上资产，一个洞 = 印钞后门。
 
-### SNARK 是什么（60 秒版）
+行业新共识：**论文证明 + 机器检查** 双保险。
 
-**SNARK**（Succinct Non-interactive Argument of Knowledge，简洁非交互式知识论证）是一种密码协议：
+---
 
-> 证明者可以让验证者相信"我知道某个秘密，使得某个性质成立"——**不泄露秘密本身**，且证明很短、验证很快。
+## 16.2 ArkLib：SNARK 的形式化地基
 
-应用遍地都是：zkRollup（以太坊扩容）、隐私交易（Zcash）、可验证计算……
+### SNARK 60 秒
 
-### ArkLib 的使命
+证明者让验证者相信「我知道某秘密使性质成立」——**不泄露秘密**，证明短、验证快。应用：zkRollup、隐私交易、可验证计算。
 
-**ArkLib**（以太坊基金会资助）是一个 Lean 库生态系统，目标是：
+### ArkLib 使命
 
-- 把 SNARK 的核心构造（多项式承诺、FRI、求和检查协议 sum-check……）在 Lean 中**机械化**；
-- 把这些协议微妙的**概率安全证明**（soundness、zero-knowledge）变成机器检查过的定理；
-- 提供**可执行的参考实现**，供 zk 工程师对照。
+- 机械化多项式承诺、FRI、sum-check 等；
+- 把 soundness / ZK 等概率论证变成定理；
+- 提供可执行参考实现。
 
-其意义：目前 SNARK 的安全论证散落在论文里，风格各异、密度极高、细节常有缝隙。ArkLib 把它们统一到 Lean 的严格框架下——**一处形式化，处处可复用**。
+技术看点：mathlib 概率/代数；IOP 等模型；有限域与多项式复用 mathlib。
 
-### 技术看点（写给好奇者）
+---
 
-- 概率推理建立在 mathlib 的测度论/概率论之上（`PMF`：概率质量函数）；
-- 交互式预言机证明（IOP）等新模型需要扩展传统的游戏化安全定义；
-- 大量代数结构（有限域、多项式环、椭圆曲线）直接复用 mathlib——再次体现"数学库是所有应用的地基"。
-
-## 16.3 动手：形式化一个微型承诺协议
-
-理论再多不如动手。我们来形式化**密码协议分析的核心套路**：定义协议 → 陈述安全性质 → 证明。用一个玩具版"承诺方案"（commitment scheme）演示结构（真实系统用的是椭圆曲线/哈希，这里用加法模运算示意）。
+## 16.3 动手：玩具承诺协议
 
 ```lean
 import Mathlib
 
-/-!
-## 玩具承诺方案
-
-承诺（commitment）协议分两步：
-1. 承诺方把秘密 v 和随机数 r 混合，公布承诺值 C；
-2. 之后揭示 (v, r)，验证方重算 C 核对。
-
-两条安全性质：
-- 隐藏性（hiding）：看 C 推不出 v；
-- 绑定性（binding）：承诺方无法事后改口（找到另一对 (v', r') 同样匹配）。
--/
-
-/-- 系统参数：模数 q -/
 variable (q : ℕ) [NeZero q]
 
-/-- 承诺值：C = (v + r) mod q —— 玩具版（无安全性，仅演示形式化结构） -/
+/-- 玩具：C = v + r （无真实安全性，只演示结构） -/
 def commit (v r : ZMod q) : ZMod q := v + r
 
-/-- 验证：重算并比对 -/
-def verify (C v r : ZMod q) : Bool := commit q v r == C
+def verify (C v r : ZMod q) : Bool := decide (commit q v r = C)
 ```
 
-### 性质一：正确性（诚实参与者总能通过验证）
+### 正确性
 
 ```lean
-theorem verify_correct (v r : ZMod q) : verify q (commit q v r) v r = true := by
+theorem verify_correct (v r : ZMod q) :
+    verify q (commit q v r) v r = true := by
   simp [verify, commit]
 ```
 
-### 性质二：绑定性（玩具版）—— 固定 r 时无法改口
+### 绑定性（固定 r 不可改口）
 
 ```lean
-/-- 若 (v, r) 和 (v', r) 对应同一承诺，则 v = v'。
-    即：在相同随机数下，秘密被绑定。 -/
 theorem binding (v v' r : ZMod q)
     (h : commit q v r = commit q v' r) : v = v' := by
-  simp [commit] at h
-  exact add_right_cancel h
+  simpa [commit] using add_right_cancel h
 ```
 
-（`add_right_cancel`：从 `v + r = v' + r` 消去 `r`。）
+### 隐藏性（信息论版叙事）
 
-### 性质三：隐藏性的"理想形式"——r 均匀随机时 C 不泄露 v
-
-这条值得细看，因为它展示了**概率安全如何形式化**：对任意两个秘密 v₀、v₁，当 r 在 ZMod q 上均匀采样时，commit 的分布**完全相同**。
+当 r 均匀随机，`v + r` 的分布与 v 无关（加法是双射）：
 
 ```lean
-/-- v + Uniform 与 Uniform 同分布（ZMod 上加法是双射）——
-    信息论意义下 C 不含 v 的任何信息。 -/
-theorem hiding (v : ZMod q) :
-    (PMF.uniformOfFintype (ZMod q)).map (· + v)
+theorem hiding_sketch (v : ZMod q) :
+    (PMF.uniformOfFintype (ZMod q)).map (fun r => r + v)
       = PMF.uniformOfFintype (ZMod q) := by
-  -- 有限群上"平移均匀分布仍是均匀分布"，mathlib 有现成引理
-  ext x
-  simp [PMF.map_apply, PMF.uniformOfFintype_apply]
-  -- 核心：{r | r + v = x} 的基数与 v 无关（恰好 1）
-  sorry  -- 留作练习：用 Finset.card 与加法的双射性完成
+  -- 练习：用加法双射 / 现成均匀分布引理完成
+  sorry
 ```
 
-这个玩具例子的骨架与真实密码协议的形式化**完全同构**：真实系统把 `ZMod q` 换成椭圆曲线群，把加法换成 Pedersen 承诺 `g^v · h^r`，把"加法双射"换成更复杂的 hardness 假设——但"定义协议 → 陈述性质 → 机器检查证明"的范式一字不改。
+骨架与真实协议**同构**：把 `ZMod` 换成椭圆曲线群、加法换成 Pedersen `g^v h^r`、双射换成 hardness 假设——范式不变：
 
-## 16.4 区块链上的 Lean：智能合约验证
+```
+定义协议 → 陈述性质 → 机器检查证明
+```
 
-区块链是形式化验证的天然市场（不可篡改 + 掌管资产 = bug 代价无穷大）。Lean 生态在这块的布局：
+---
 
-- **ArkLib**：如上，zk 基础设施的验证；
-- **Veil**（第 15 章）：共识协议验证；
-- **Nethermind 等公司**：用 Lean 验证以太坊相关组件（如验证 RISC-V zkVM 电路的 Lean 形式化项目）；
-- 学术项目：EVM 语义、Gas 机制的形式化模型。
+## 16.4 区块链上的 Lean
 
-趋势判断：随着 zk 技术成为区块链扩容主流路线，**"电路/证明系统的形式化验证"会从加分项变成必选项**——而 Lean 是目前少数能同时承载代数、概率和程序推理的工具。
+| 方向 | 角色 |
+|------|------|
+| ArkLib | zk 基础设施 |
+| Veil | 共识协议 |
+| 生态项目 | EVM/zkVM/电路相关形式化 |
+| 智能合约 | 高代价逻辑的模型+规格 |
 
-## 16.5 密码学形式化的方法论要点
+趋势：zk 成扩容主流后，**电路/证明系统验证从加分变必选**；Lean 同时扛代数、概率、程序。
 
-1. **区分功能正确性与安全性**：前者是"输入输出对"，后者是"对任意攻击者，成功概率 ≤ 可忽略量"——后者才是密码学的灵魂，也最难；
-2. **游戏化定义**（game-based security）：把安全性质写成"挑战者 vs 攻击者"的游戏，然后证明攻击者胜率的上界。Lean 的依赖类型很适合精确表达"攻击者不知道秘密"这类信息论约束；
-3. **从教科书协议练手**：Schnorr 协议、Sigma 协议、Fiat-Shamir 变换——ArkLib 都在做，读它的代码是最好的学习路径；
-4. **mathlib 的抽象代数是你的朋友**：有限域（`ZMod p`、`GaloisField`）、多项式（`Polynomial`）、群论，全部现成。
+---
 
-## 16.6 本章小结
+## 16.5 方法论要点
 
-- 密码学安全证明微妙且代价极端，形式化是行业新共识；
-- **ArkLib**（以太坊基金会支持）正在 Lean 中机械化 SNARK 的安全证明，为 zk 生态提供机器检查过的规范与参考实现；
-- 动手部分：用 `ZMod q` 形式化了玩具承诺方案的正确性、绑定性、隐藏性——骨架与真实协议验证同构；
-- 区块链（共识、zkVM、智能合约）是 Lean 验证快速增长的阵地。
+1. **功能正确 vs 安全**：后者是攻击者优势界；
+2. **游戏化定义**：挑战者 vs 攻击者；
+3. **从教科书协议练手**：Schnorr、Sigma、Fiat–Shamir；
+4. **mathlib 是朋友**：`ZMod`、`Polynomial`、群论。
+
+### 安全性质检查清单（玩具→真实）
+
+| 性质 | 玩具版 | 真实版常要 |
+|------|--------|------------|
+| Correctness | verify∘commit = ok | 同左 |
+| Binding | 固定 r 唯一 v | 计算绑定性（硬度） |
+| Hiding | 均匀 + 双射 | 计算隐藏 / 语义安全 |
+
+---
+
+## 16.6 迷你扩展：揭示接口
+
+```lean
+def openCommit (C v r : ZMod q) : Bool := verify q C v r
+
+theorem open_iff (C v r : ZMod q) :
+    openCommit q C v r = true ↔ C = commit q v r := by
+  simp [openCommit, verify, commit]
+```
+
+---
+
+## 16.7 踩坑对照
+
+| 症状 | 处理 |
+|------|------|
+| 以为玩具 commit 可上线 | 仅教学；无哈希/曲线 |
+| `PMF` API 版本差 | 查当前 mathlib Probability |
+| `ZMod 0` | 需要 `NeZero q` |
+| 安全证明全 sorry | 至少正确性+绑定先清零 |
+
+---
+
+## 16.8 本章小结
+
+- 密码安全微妙、代价高 → 形式化成共识；
+- ArkLib 机械化 SNARK 论证；
+- 玩具承诺：正确性、绑定、隐藏骨架；
+- 链上/zk 是快速增长阵地。
+
+---
 
 ## 练习
 
-1. 完成 16.3 中 `hiding` 定理的 `sorry`（提示：`Finset.card_eq_one`、`ZMod` 上加法双射 `Equiv.addRight`）；
-2. 给玩具协议加"揭示阶段"：定义 `open` 函数并证明 `verify q C v r = true ↔ C = commit q v r`；
-3. 形式化一个更贴近现实的协议：**Schnorr 身份协议**的功能正确性（给定群生成元 g，秘密 x，公开 h = g^x；协议三步后验证等式 g^s = R · h^c 成立）——用 mathlib 的 `Group`/`ZMod` 表达；
-4. （调研）浏览 ArkLib 仓库，找到 sum-check 协议的定理陈述，数一数它的安全定理依赖了 mathlib 的哪些代数模块。
+### ⭐ 基础
+
+1. 对 `q = 17` `#eval` 几组 commit/verify。
+2. 证 `open_iff`。
+
+### ⭐⭐ 进阶
+
+3. 完成 `hiding_sketch` 的 `sorry`。
+4. 增加「错误密钥」反例：不同 `(v,r)` 映射到同 C 是否可能？在玩具加法下讨论。
+
+### ⭐⭐⭐ 硬核
+
+5. Schnorr 功能正确性草图（`g^s = R * h^c`）。
+6. 浏览 ArkLib，列出 sum-check 依赖的 3 个 mathlib 模块。
+
+---
 
 ## 延伸阅读
 
-- ArkLib 仓库与文档（GitHub: argumentcomputer/ArkLib……搜索 "ArkLib Lean"）；
-- 官网 Use Case 专文：*ArkLib: Formally Verified Arguments of Knowledge in Lean*；
-- 入门读物：*A Graduate Course in Applied Cryptography*（Boneh & Shoup，免费）——配合 Lean 形式化食用极佳。
+| 资源 | 内容 |
+|------|------|
+| ArkLib 仓库 / 官网 Use Case | 主线 |
+| Boneh–Shoup 应用密码学讲义 | 理论 |
+| 第 12、13 章 | 代数与概率后台 |
 
 ---
 

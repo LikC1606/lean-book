@@ -1,0 +1,32 @@
+name: Examples (lake build)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/**"
+      - ".github/workflows/examples.yml"
+  pull_request:
+    paths:
+      - "examples/**"
+      - ".github/workflows/examples.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build examples with lean-action
+        uses: leanprover/lean-action@v1
+        with:
+          # Project root relative to repository root
+          lake-package-directory: examples
+          build: true
+          test: false
+          lint: false

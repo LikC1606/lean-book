@@ -48,3 +48,5 @@
 - [附录 A　常用策略速查表](chapters/appendix-a-tactics-cheatsheet.md)
 - [附录 B　常用资源与工具清单](chapters/appendix-b-resources.md)
 - [附录 C　术语表](chapters/appendix-c-glossary.md)
+- [附录 D　官方文档难句白话对照](chapters/appendix-d-official-hard.md)
+- [附录 E　自然数游戏与本书对照](chapters/appendix-e-nng-map.md)

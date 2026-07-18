@@ -1,2 +1,6 @@
 # mdBook 构建输出
 /book/
+
+# Lake / Lean 构建产物
+**/.lake/
+**/lake-manifest.json

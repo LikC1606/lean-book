@@ -174,4 +174,4 @@
 
 ---
 
-⬅️ [附录 B　常用资源与工具清单](appendix-b-resources.md) ｜ 🏠 [返回首页](00-preface.md)
+⬅️ [附录 B　常用资源与工具清单](appendix-b-resources.md) ｜ ➡️ [附录 D　官方文档难句白话对照](appendix-d-official-hard.md) ｜ 🏠 [返回首页](00-preface.md)

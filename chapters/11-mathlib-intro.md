@@ -1,48 +1,64 @@
 # 第 11 章　mathlib：一百万行形式化数学
 
-> 本章目标：认识人类历史上最大的形式化数学库 mathlib4，学会搭建依赖它的项目，并掌握"在图书馆里找书"的核心技能。
+> 本章目标：认识人类历史上最大的形式化数学库 mathlib4，学会搭建依赖它的项目，并掌握「在图书馆里找书」的核心技能。学完后你能独立新建 math 项目、缓存依赖、用四条渠道找到引理并完成小证明。
+
+## 本章你会做出什么
+
+1. `lake new ... math` + `cache get` 跑通环境；
+2. 证明 `Real.sqrt 4 = 2` 与一两个不等式小定理；
+3. 走通「猜名 → exact? → Loogle → LeanSearch」找引理流程；
+4. 理解 mathlib 一般化与类型类组织的设计哲学。
+
+---
 
 ## 11.1 mathlib 是什么？
 
-mathlib（数学库）是 Lean 社区共建的形式化数学大厦。几个数字感受下它的体量：
+mathlib 是 Lean 社区共建的形式化数学大厦。体量感：
 
-- **超过 100 万行**形式化数学代码，且每天还在增长；
-- 覆盖：代数（群环域模）、分析（微积分、测度论）、拓扑、数论、组合、图论、概率、范畴论、微分几何、泛函分析……
-- 数百名贡献者，从本科生到菲尔兹奖得主（陶哲轩是活跃用户）；
-- 配套的 **CSLib**（计算机科学库）也已启动，专注算法与数据结构的形式化。
+- **百万行级**形式化数学，且持续增长；
+- 覆盖代数、分析、拓扑、数论、组合、图论、概率、范畴、几何、泛函……
+- 贡献者从本科生到菲尔兹奖得主；陶哲轩等是活跃用户；
+- 配套 **CSLib**（计算机科学）专注算法与形式化 CS。
 
-它为什么重要？打个比方：
+类比：
 
-> 如果 Lean 是 Python，mathlib 就是 NumPy + SciPy + pandas + scikit-learn 的总和——没有人"从零开始"做数学，所有人都站在 mathlib 的肩膀上。
+> 若 Lean 是 Python，mathlib 就像 NumPy + SciPy + pandas + 半个研究级数学库——没人从零发明实数，人人站在 mathlib 肩膀上。
 
-第 1 章提到的那些明星项目——费马大定理形式化、Liquid Tensor Experiment、AlphaProof 的几何题——全部构建在 mathlib 之上。
+费马大定理形式化、Liquid Tensor、AlphaProof 相关工作，几乎都建在 mathlib 之上。
 
-## 11.2 配置一个 mathlib 项目
+---
 
-跟着做，15 分钟搞定（网络好的话）。
+## 11.2 配置一个 mathlib 项目（跟做）
 
-**第 1 步**：创建项目（推荐用 mathlib 官方模板仓库或者手动配）：
+网络正常时大约十几分钟。
+
+### 第 1 步：创建
 
 ```bash
-lake new my_math math    # math 模板会自动配置 mathlib 依赖
+lake new my_math math    # math 模板自带 mathlib 依赖
 cd my_math
 ```
 
-或者手动在已有项目的 `lakefile.toml` 中添加：
+或在已有项目 `lakefile.toml` 中 `require` mathlib（版本以模板 / 文档为准）：
 
 ```toml
-[require]
-mathlib = { git = "https://github.com/leanprover-community/mathlib4.git", rev = "v4.x.x" }
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.x.0"   # 换成与 elan/toolchain 匹配的版本
 ```
 
-**第 2 步**：下载预编译缓存（**关键！跳过这步你将编译几个小时**）：
+### 第 2 步：更新 + 缓存（关键）
 
 ```bash
 lake update
-lake exe cache get
+lake exe cache get          # 跳过这步 = 本地编译数小时
+# lake exe cache get -j 8   # 可多线程
 ```
 
-**第 3 步**：测试。创建 `Test.lean`：
+### 第 3 步：冒烟测试
+
+`MyMath/Basic.lean` 或 `Test.lean`：
 
 ```lean
 import Mathlib
@@ -51,141 +67,259 @@ theorem hello_math : Real.sqrt 4 = 2 := by
   rw [Real.sqrt_eq_iff_sq_eq] <;> norm_num
 ```
 
-`lake build` 或 VS Code 打开，看到没有红色波浪线——恭喜，你接入了全人类的数学知识库。
+VS Code 打开或 `lake build`：无红线即成功。
 
-> ⚠️ 首次 `import Mathlib` 会加载整个库，VS Code 里首次打开稍慢（几秒到十几秒），属正常现象。之后可以按需导入具体模块（如 `import Mathlib.Data.Real.Basic`）加快响应。
+> ⚠️ **首次** `import Mathlib` 会加载大量环境，可能卡几秒到十几秒。日常请**按需导入**，例如：
+>
+> ```lean
+> import Mathlib.Data.Real.Basic
+> import Mathlib.Tactic
+> ```
 
-## 11.3 mathlib 里有什么：一张寻宝图
+### 常见配置翻车
 
-mathlib 的文件按数学学科组织在 `Mathlib/` 目录下：
+| 症状 | 处理 |
+|------|------|
+| 编译 mathlib 本身到天荒地老 | 忘了 `lake exe cache get` |
+| toolchain 与 mathlib 版本不匹配 | 对齐 `lean-toolchain` 与 `lakefile` rev |
+| 公司网络拉不下 git | 配代理；或用社区镜像说明 |
+| VS Code 不刷新 | 重启 Lean 服务器（扩展命令） |
+
+---
+
+## 11.3 寻宝图：库里有什么
+
+`Mathlib/` 下按学科分目录（名称可能随版本微调）：
 
 | 目录 | 内容 |
 |------|------|
-| `Mathlib/Algebra/` | 群、环、域、模、线性代数基础 |
-| `Mathlib/Analysis/` | 极限、连续、微分、积分、测度论 |
-| `Mathlib/Topology/` | 拓扑空间、连续性、紧性 |
-| `Mathlib/NumberTheory/` | 数论：素数、同余、二次互反律 |
-| `Mathlib/Combinatorics/` | 组合、图论 |
-| `Mathlib/Probability/` | 概率论 |
-| `Mathlib/LinearAlgebra/` | 向量空间、矩阵 |
-| `Mathlib/Data/` | 具体数系与结构：ℝ、ℂ、多项式、有限集 |
-| `Mathlib/Tactic/` | mathlib 扩展的策略（`ring`、`linarith`、`gcongr`…） |
-| `Mathlib/CategoryTheory/` | 范畴论 |
-| `Mathlib/Geometry/` | 几何学 |
-| `Mathlib/Computability/` | 可计算性理论、图灵机 |
+| `Algebra/` | 群环域模、线性代数基础 |
+| `Analysis/` | 极限、微积分、测度 |
+| `Topology/` | 拓扑、紧性、连续性 |
+| `NumberTheory/` | 素数、同余、经典数论 |
+| `Combinatorics/` | 组合、图论 |
+| `Probability/` | 概率 |
+| `LinearAlgebra/` | 向量空间、矩阵 |
+| `Data/` | ℝ、ℂ、多项式、有限集… |
+| `Tactic/` | `ring`、`linarith`、`gcongr`… |
+| `CategoryTheory/` | 范畴论 |
+| `Geometry/` | 几何 |
+| `Computability/` | 可计算性 |
 
-数学对象基本采用**类型类层级**组织（回忆第 6 章）：
+### 类型类层级（复习第 6 章）
 
 ```
 Mul → Semigroup → Monoid → Group → CommGroup
-Add + Mul + ... → Ring → CommRing → Field
+Add + Mul + … → Ring → CommRing → Field
 ```
 
-写定理时你面对的不是"整数的加法交换律"，而是"**任意交换环/群中**的交换律"——一次证明，处处可用。
+定理往往写在**最一般**的类上：「任意交换环中…」，整数、矩阵、函数空间一起受益。
+
+---
 
 ## 11.4 核心技能：找到你要的引理
 
-mathlib 有几万条定理。**找定理的能力 = 使用 mathlib 的能力**。四个渠道：
+**会找定理 = 会用 mathlib。** 四条渠道：
 
-### ① 命名约定（最重要！）
+### ① 命名约定（最重要）
 
-mathlib 的命名极其规律：`主题.操作_性质_条件`。猜一猜下面定理叫什么：
+模式大致：`对象/命名空间` + `操作` + `性质` + `方向/条件`，snake_case。
 
-- "a ≤ b → a + c ≤ b + c"？→ `add_le_add_right`
-- "自然数乘法交换律"？→ `Nat.mul_comm`
-- "实数中 x ≤ y 且 y ≤ x 则 x = y"？→ `le_antisymm`
+| 你想说的 | 常猜 |
+|----------|------|
+| a≤b → a+c≤b+c | `add_le_add_right` |
+| 自然数乘法交换 | `Nat.mul_comm` |
+| x≤y 且 y≤x ⇒ x=y | `le_antisymm` |
+| 列表 append 长度 | `List.length_append` |
 
-规律：**操作名 + 性质 + 方向/条件**， snake_case。猜出大概名字后在 VS Code 里输几个字母，自动补全会给你惊喜。
+在编辑器里敲前缀，靠补全验证。
 
 ### ② Loogle（类型搜索）
 
-[loogle.lean-lang.org](https://loogle.lean-lang.org/)——**按类型签名搜定理**，像定理界的 Hoogle：
+[loogle.lean-lang.org](https://loogle.lean-lang.org/)：按类型模式搜，像定理界的 Hoogle。
 
-- 搜 `"a + b = b + a"` 的实数版本？输入 `_ + _ = _ + _`；
-- 想找"从 `a ∣ b` 和 `b ∣ c` 推出 `a ∣ c`"？输入 `_ ∣ _ → _ ∣ _ → _ ∣ _`。
+- `_ + _ = _ + _`
+- `_ ∣ _ → _ ∣ _ → _ ∣ _`
 
-### ③ LeanSearch / Moogle（自然语言搜索）
+### ③ LeanSearch / Moogle（自然语言）
 
-[leansearch.net](https://leansearch.net/)——直接用大白话搜："addition is commutative on natural numbers"。AI 语义匹配。
+[leansearch.net](https://leansearch.net/)：英文大白话，例如 *addition commutative natural numbers*。
 
-### ④ `exact?` / `apply?`（IDE 内搜索）
+### ④ IDE：`exact?` / `apply?` / `rw?` / `hint`
 
-第 10 章已介绍：在证明现场直接让 Lean 搜库。
+证明现场直接搜（第 10 章）。
 
-> 💡 实战工作流：先猜名字 → 补全验证 → 不行就 `exact?` → 还不行上 Loogle → 再不行 Zulip 提问。
+### 推荐工作流
 
-## 11.5 实数初体验：一个完整例子
+```
+猜名字 + 补全
+    ↓ 失败
+exact? / apply? / hint
+    ↓ 失败
+Loogle（类型）
+    ↓ 失败
+LeanSearch（自然语言）
+    ↓ 失败
+mathlib 文档站全文搜
+    ↓ 失败
+Zulip #new members 贴 MWE（附录 B）
+```
 
-来点真数学。证明：**对任意实数 x，x² ≥ 0，且 x² = 0 当且仅当 x = 0**。
+---
+
+## 11.5 完整例子：实数上的平方
 
 ```lean
 import Mathlib
 
-theorem sq_nonneg' (x : ℝ) : 0 ≤ x ^ 2 := sq_nonneg x   -- 库里有现成的！
+theorem sq_nonneg' (x : ℝ) : 0 ≤ x ^ 2 := sq_nonneg x
 
 theorem sq_eq_zero_iff' (x : ℝ) : x ^ 2 = 0 ↔ x = 0 := by
   constructor
   · intro h
-    -- x² = 0 ⟹ x = 0：利用 "x*y=0 ⟹ x=0 或 y=0"
-    have : x * x = 0 := by rw [← sq, h]
+    have : x * x = 0 := by
+      simpa [sq] using h
     rcases mul_eq_zero.mp this with h' | h' <;> exact h'
   · intro h
-    rw [h]; norm_num
+    simp [h]
 ```
 
 观察：
 
-- `ℝ` 是实数（输入 `\R`），`sq_nonneg`、`mul_eq_zero` 都是 mathlib 现成引理；
-- 养成"**先搜库再动手**"的习惯：mathlib 里很可能已经有你需要的定理或其近亲。
+- `ℝ` 输入 `\R`；
+- **先搜库**（`sq_nonneg`）再动手；
+- `norm_num` / `simp` / `rcases` 组合收尾。
 
-再看一个带 `calc` 的分析味道例子：
+### 带 `calc` + `gcongr` 的估计
 
 ```lean
+import Mathlib
+
 theorem triangle_ineq_demo (a b : ℝ) : |a + b| ≤ |a| + |b| := abs_add a b
 
-example (x y : ℝ) (h : |x - y| < 0.01) : |x^2 - y^2| ≤ (|x| + |y|) * 0.01 := by
+example (x y : ℝ) (h : |x - y| < (0.01 : ℝ)) :
+    |x^2 - y^2| ≤ (|x| + |y|) * 0.01 := by
+  have hyx : |x - y| ≤ (0.01 : ℝ) := le_of_lt h
   calc |x^2 - y^2|
-      = |(x - y) * (x + y)|   := by ring_nf
-    _ = |x - y| * |x + y|     := by rw [abs_mul]
+      = |(x - y) * (x + y)| := by ring
+    _ = |x - y| * |x + y| := by rw [abs_mul]
     _ ≤ |x - y| * (|x| + |y|) := by
-        gcongr                       -- 单调性策略：化归为 |x+y| ≤ |x|+|y|
+        gcongr
         exact abs_add x y
-    _ ≤ (|x| + |y|) * 0.01       := by
+    _ ≤ (|x| + |y|) * 0.01 := by
         rw [mul_comm]
-        gcongr                       -- 化归为 |x-y| ≤ 0.01
-        exact le_of_lt h
+        gcongr
+        · exact abs_nonneg _
+        · exact hyx
 ```
 
-`gcongr`（generalized congruence）自动处理"两边同乘一个非负数保持 ≤"这类单调性推理——分析证明的得力助手。
+（若你本地 mathlib 版本上 `ring`/`gcongr` 细节略有出入，以 `exact?` 与报错为准微调——**版本漂移是正常的**，思想不变。）
 
-## 11.6 mathlib 的设计哲学（知道这些少走弯路）
+`gcongr`：处理「两边同乘非负数保留 ≤」一类单调性，分析证明利器。
 
-1. **一切尽量一般化**：能对拓扑群证的，绝不对实数证。所以你常看到定理前提里有一堆 `[CommRing α]` `[MeasurableSpace β]` 这样的类型类参数；
-2. **定义要"巧"**：比如实数没有直接定义减法结合律，而是统一从公理出发；`Filter`（滤子）统一处理各种极限……初学时某些定义显得绕，但它们是为了**最大复用**；
-3. **`classical` 随便用**：mathlib 是经典数学的天下，排中律、选择公理随意使用（编译时自动处理）；
-4. **文档字符串齐全**：悬停任何定义都有说明，`Mathlib.` 开头的官网文档可全文搜索；
-5. **性能意识**：大库编译压力大，社区有整套缓存（`lake exe cache get`）和 CI 基础设施。
+---
 
-## 11.7 本章小结
+## 11.6 迷你实录：从空项目到三个定理
 
-- mathlib = Lean 的数学操作系统，百万行级、覆盖全学科、类型类组织；
-- 项目配置三板斧：`lake new ... math` → `lake update` → `lake exe cache get`；
-- 找定理四渠道：命名约定、Loogle、LeanSearch、`exact?`；
-- 写数学证明的节奏：**先搜库、再拆解、自动化收尾**。
+建议你完整敲一遍：
+
+```lean
+import Mathlib
+
+-- 定理 1：中点夹在两端之间
+example (a b : ℝ) (h : a ≤ b) :
+    a ≤ (a + b) / 2 ∧ (a + b) / 2 ≤ b := by
+  constructor <;> linarith
+
+-- 定理 2：偶数加偶数
+example (a b : ℤ) (ha : Even a) (hb : Even b) : Even (a + b) := by
+  exact Even.add ha hb   -- 也可 exact?
+
+-- 定理 3：sqrt 后平方回来
+example : Real.sqrt 2 ^ 2 = 2 := by
+  have : (0 : ℝ) ≤ 2 := by norm_num
+  exact Real.sq_sqrt this
+```
+
+每证完一个，用 `#print axioms` 看依赖（常会看到经典公理，正常）。
+
+---
+
+## 11.7 mathlib 设计哲学（少走弯路）
+
+1. **尽量一般化**：能对拓扑群证的，不对「仅实数」证；前提里一长串 `[CommRing α] [...]` 是特性不是折磨。
+2. **定义求复用**：滤子（Filter）统一极限语言等——初学觉得绕，是为了全域通用。
+3. **经典逻辑默认**：排中律、选择随便用。
+4. **文档字符串**：悬停有说明；[mathlib4_docs](https://leanprover-community.github.io/mathlib4_docs/) 可搜。
+5. **性能与缓存**：永远先 `cache get`；CI 也靠缓存活着。
+
+### 读一般化定理的方法
+
+看到：
+
+```lean
+variable {α : Type*} [LinearOrderedField α]
+theorem foo (x : α) : ...
+```
+
+心译：「任意线性有序域上……」→ 对 `ℚ`、`ℝ` 都适用。你的目标若是 `ℝ`，直接 `foo` 即可。
+
+---
+
+## 11.8 踩坑对照
+
+| 症状 | 处理 |
+|------|------|
+| 找不到「很显然」的引理 | 可能写在更一般的类上；用类型搜 |
+| `import Mathlib` 太慢 | 改细粒度 import |
+| 证明在 A 机器过 B 不过 | toolchain / mathlib rev 不一致 |
+| `linarith` 失败 | 非线性项；先 `ring_nf` 或拆 `have` |
+| Unicode 输不出 | `\R` `\le` `\in` 等缩写 |
+| 想改 mathlib 源码 | 不要；上游 PR 或本地 `patch` 需谨慎 |
+
+---
+
+## 11.9 本章小结
+
+- mathlib = Lean 的数学操作系统：巨型、类型类、经典数学；
+- 配置三板斧：`lake new … math` → `lake update` → **`lake exe cache get`**；
+- 找定理：命名约定、Loogle、LeanSearch、`exact?`；
+- 节奏：**先搜库 → 再拆解 → 自动化收尾**；
+- 读定理时习惯「一般类上的结果」。
+
+---
 
 ## 练习
 
-1. 配置好 mathlib 项目，跑通 11.2 节的 `Real.sqrt 4 = 2`；
-2. 在 Loogle 上搜索类型 `"_ + _ - _ = _"`，观察都能找到什么；
-3. 用 mathlib 证明：`example (a b : ℝ) (h : a ≤ b) : a ≤ (a + b) / 2 ∧ (a + b) / 2 ≤ b`（提示：`constructor` + `linarith`）；
-4. 证明"两个偶数之和为偶"：mathlib 中偶数谓词是 `Even`，试着用 `exact?` 找 `Even.add`；
-5. 挑战：证明 `Real.sqrt 2 ^ 2 = 2`（提示：`Real.sq_sqrt`，需要 2 ≥ 0 的前提）。
+### ⭐ 基础
+
+1. 配置项目并跑通 `Real.sqrt 4 = 2`。
+2. Loogle 搜 `_ + _ = _ + _`，记下 3 个结果的名字。
+
+### ⭐⭐ 进阶
+
+3. 证明：`example (a b : ℝ) (h : a ≤ b) : a ≤ (a + b) / 2 ∧ (a + b) / 2 ≤ b`。
+4. 证明两偶数之和为偶（`Even`，优先 `exact?`）。
+5. 证明 `Real.sqrt 2 ^ 2 = 2`。
+
+### ⭐⭐⭐ 硬核
+
+6. 在 [MIL](https://leanprover-community.github.io/mathematics_in_lean/) 做完 Introduction 后的第一个练习文件，对照本书策略章。
+7. 任选一个你熟的本科定理（如「√2 无理」），在 mathlib 里**搜索是否已有**，阅读其证明骨架（不必全懂）。
+
+---
 
 ## 延伸阅读
 
-- 《Mathematics in Lean》（MIL）——mathlib 官方教材，免费在线；
-- mathlib4 文档站：leanprover-community.github.io/mathlib4_docs/；
-- 视频：YouTube 上 "Lean for the Curious Mathematician" 系列讲座。
+| 资源 | 用途 |
+|------|------|
+| [*Mathematics in Lean*](https://leanprover-community.github.io/mathematics_in_lean/) | **官方 mathlib 教程，强烈跟做** |
+| [mathlib4_docs](https://leanprover-community.github.io/mathlib4_docs/) | API 文档 |
+| [Glimpse of Lean](https://github.com/PatrickMassot/GlimpseOfLean) | 快速文件型入门 |
+| Lean for the Curious Mathematician 录像 | 数学家向演讲 |
+| 第 12–13 章 | 代数与分析专题 |
+
+下一章我们沿着类型类梯子往上爬：从群到环到域。
 
 ---
 

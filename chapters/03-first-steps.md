@@ -2,7 +2,14 @@
 
 > 本章目标：通过一连串小例子，建立对 Lean 4 的第一手感。不求甚解，先混个脸熟——把每个例子亲手敲一遍，在 VS Code 里观察结果。
 
-这一章我们像逛主题公园一样，把 Lean 4 最好玩的几个"项目"都快速体验一遍。每个例子都很短，请**务必亲手敲一遍**，并在 VS Code 里观察结果。读这章时记得把 Infoview 面板开着——它就是你这趟旅程的导览图。
+## 本章你会做出什么
+
+1. 用 `#eval` / `def` / 模式匹配写出小函数；
+2. 用 `theorem ... := by rfl` 与 `induction` 各证一个小定理；
+3. 试过 `simp` / `grind` / `omega` 自动化；
+4. （推荐）在 `examples/LeanBookExamples/Ch03.lean` 里对照构建。
+
+这一章像逛主题公园：把 Lean 最好玩的几个「项目」快速体验一遍。请**务必亲手敲**，并开着 Infoview——它是你的导览图。
 
 ## 3.1 Lean 是一个计算器
 
@@ -382,38 +389,64 @@ example (x : Nat) (xs : List Nat) : contains x xs = true ∨ contains x xs = fal
 
 这个例子把"定义函数 → 模式匹配 → 递归 → 命题陈述 → 自动证明"一整套流程浓缩在十行里。等你读完第三部分，回头再看这段，会发现每一步都清晰可解。现在的重点是感受：**程序和证明用同一种语言写，在同一份文件里，被同一个工具检查。**
 
-## 3.8 本章小结
+## 3.8 三十分钟路线图（时间盒）
+
+| 分钟 | 做什么 |
+|------|--------|
+| 0–5 | `#eval` 算术与列表 |
+| 5–12 | `def greet`、柯里化、`map` |
+| 12–18 | 模式匹配 `describe`、`safeHead` |
+| 18–25 | `add_zero` / `zero_add` + 盯 Infoview |
+| 25–30 | 试 `simp`/`grind`，故意写错一次读报错 |
+
+超时没关系——宁可慢，也要把 Infoview 读懂。
+
+## 3.9 和 `examples/` 对照
+
+```bash
+cd examples && lake build
+# 打开 LeanBookExamples/Ch03.lean
+```
+
+书中片段若与你本机小版本差异，以 `examples/` 能通过编译的为准，再回改书上笔记。
+
+## 3.10 本章小结
 
 - `#eval` 求值、`def` 定义函数、模式匹配 + 递归处理数据结构；
 - 函数柯里化、匿名函数（`fun` / `·`）是函数式编程的日常；
 - `theorem ... := by` 开启证明，`rfl`、`simp`、`grind`、`omega` 等策略各显神通；项模式可直接 `:= rfl`；
-- **Infoview 实时显示证明状态**，是交互式证明的"仪表盘"——养成边写边看的习惯；
-- Lean 是纯函数式语言：不可变、无 null、函数必须终止——这些"限制"正是它能做严格证明的原因。
+- **Infoview 实时显示证明状态**，是交互式证明的「仪表盘」——养成边写边看的习惯；
+- Lean 是纯函数式语言：不可变、无 null、函数必须终止——这些「限制」正是它能做严格证明的原因；
+- 用三十分钟路线图 + `examples/` 固化手感。
 
 ## 练习
 
-### 基础（⭐）
+### ⭐ 基础
 
-1. 写一个递归函数 `myReverse : List Nat → List Nat`，并 `#eval` 测试 `[1,2,3]` 是否变成 `[3,2,1]`；
-2. 用模式匹配写函数 `firstTwo : List α → Option (α × α)`：列表至少两个元素时返回前两个组成的二元组，否则返回 `none`；
-3. 试着证明 `example (n : Nat) : n + 1 = Nat.succ n := by rfl`，再用 `grind` 证明 `example (a b : Nat) : a + b = b + a := by grind`；
-4. 故意写错一个证明（比如 `1 + 1 = 3`），观察 Infoview 里的报错长什么样——学会读错误信息是重要技能。
+1. 写 `myReverse : List Nat → List Nat`，`#eval` 测 `[1,2,3]`。
+2. 写 `firstTwo : List α → Option (α × α)`。
+3. 证 `n + 1 = Nat.succ n`（`rfl`）与 `a + b = b + a`（`grind`/`omega`）。
+4. 故意证 `1 + 1 = 3`，读 Infoview 报错。
 
-### 进阶（⭐⭐）
+### ⭐⭐ 进阶
 
-5. 写 `length : List α → Nat`（手写递归，不用 `.length`），再用 `simp` 证明 `example (xs : List Nat) : length xs = xs.length := by ...`（可能需要一点提示：先让 `simp` 尝试，再补 `induction`）；
-6. 写一个 `countdown : Nat → List Nat`，返回 `[n, n-1, ..., 0]`，思考：为什么 Lean 接受它终止？
-7. 证明 `example (x : Nat) (xs : List Nat) : contains x xs = false ∨ contains x xs = true := by ...`（提示：`simp` + `omega`，或直接 `decide` 不行就归纳）。
+5. 手写 `length`，证其等于 `.length`（`induction`）。
+6. 写 `countdown : Nat → List Nat`，解释终止性。
+7. 证 `contains` 的结果必为 true 或 false（Bool 穷尽）。
 
-### 硬核（⭐⭐⭐，选做）
+### ⭐⭐⭐ 硬核
 
-8. 用项模式（不用 `by`）写出 `example : 1 + 1 = 2` 和 `example (n : Nat) : n + 0 = n`，思考为什么 `rfl` 一个值能"装"进两种不同形状的类型里。
+8. 项模式写出 `1+1=2` 与 `n+0=n`，思考 `rfl` 为何通用。
+9. 在 `examples` 里给 Ch03 加一个你自己的 `theorem` 并 `lake build`。
 
 ## 延伸阅读
 
-- 《Functional Programming in Lean》第 1–2 章（免费在线：lean-lang.org → Learn）；
-- 自然数游戏 Tutorial World；
-- *Theorem Proving in Lean 4* 第 1–2 章（更偏证明视角的入门）。
+| 资源 | 内容 |
+|------|------|
+| FPIL 第 1–2 章 | 编程入门 |
+| NNG Tutorial | 证明手感 |
+| TPIL 第 1–2 章 | 证明视角 |
+| 附录 E | NNG ↔ 本书章节 |
 
 ---
 

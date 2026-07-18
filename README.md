@@ -49,9 +49,21 @@ Lean 4 是一门独特的语言：它既是一门**现代函数式编程语言**
 
 不想装环境？没问题。打开 [Lean 4 Web Playground](https://live.lean-lang.org/) 就能在浏览器里运行书中绝大部分示例。当然，我们强烈建议按照第 2 章安装本地环境，体验会好得多。
 
+## 配套可构建示例
+
+仓库内 `examples/` 是**不依赖 mathlib** 的 Lake 项目，收录第 3、4、8、14、15、22 等章对照代码：
+
+```bash
+cd examples
+lake build
+lake exe examples
+```
+
+以能通过 `lake build` 的代码为准；Markdown 正文侧重讲解，个别策略写法可能随 Lean 小版本微调。
+
 ## 关于版本
 
-本书基于 2025 年的 Lean 4 稳定版（Lean 4.x toolchain，由 Lean FRO 维护）。Lean 4 仍在快速演进，个别细节可能随版本变化，但核心思想是稳定的。
+本书基于 Lean 4 稳定工具链（由 Lean FRO 维护；`examples/lean-toolchain` 记录了示例构建所用版本）。Lean 4 仍在快速演进，个别细节可能随版本变化，但核心思想是稳定的。
 
 ## 许可与反馈
 
