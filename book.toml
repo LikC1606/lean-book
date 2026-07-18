@@ -1,0 +1,8 @@
+[book]
+title = "Lean 4 漫游指南"
+authors = ["DaviRain-Su"]
+language = "zh"
+src = "."
+
+[output.html]
+git-repository-url = "https://github.com/DaviRain-Su/lean-book"
