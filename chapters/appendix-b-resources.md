@@ -71,6 +71,7 @@
 | AlphaProof / Nexus | DeepMind 的自动证明系统（研究展示） | 第 20 章 |
 | ReProver | 检索增强证明模型（LeanDojo 配套） | 第 20 章 |
 | 通用 LLM + 验证闭环 | 把 LLM 输出贴回 VS Code 让 Lean 检查 | 第 20 章 |
+| [TheoremOS](https://github.com/HuggingMath/theorem-os) | Lean 4 数学研究工作台，可查看候选证明的检查反馈和所有原目标的验收结果。[中文免登录演练](https://app.theoremos.top/practice.html?lang=zh) | 第 20 章 |
 
 ## B.6 库与生态
 
